@@ -14,8 +14,32 @@ import glob
 import time
 from models import *
 from datasets import *
+import argparse
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+## DEFAULT PARAMETERS ##
+
+lr_CNN = 1e-3
+epochs_CNN = 50
+lr_MLP = 1e-1
+epochs_MLP = 1000
+device = "cuda:1"
+
+## Config ##
+
+config = argparse.ArgumentParser(description="Configuration")
+config.add_argument("--lr_CNN", type=float, default=lr_CNN)
+config.add_argument("--lr_MLP", type=float, default=lr_MLP)
+config.add_argument("--epochs_CNN", type=int, default=epochs_CNN)
+config.add_argument("--epochs_CNN", type=int, default=epochs_MLP)
+config.add_argument("--device", type=str, default=device)
+
+parameters = config.parse_args()
+
+print(parameters)
+
+## DEVICE ##
+
+device = torch.device(parameters.device if torch.cuda.is_available() else "cpu")
 
 print("device :", device)
 
@@ -42,7 +66,7 @@ for ID in negative_label :
 print("negative samples :", nb_negative)
 print("positive samples :", nb_positive)
 
-data_train, data_val = train_test_split(data_train_val, test_size=0.3)
+data_train, data_val = train_test_split(data_train_val, test_size=0.33)
 print("Size training set :", len(data_train))
 print("Size validation set :", len(data_val))
 print("Size test set :", len(data_test))
@@ -76,14 +100,15 @@ feature_extractor = CNN(in_channels=3, num_classes=1, K=8).to(device)
 
 #feature_extractor.load_state_dict(torch.load("CNN49.pth"))
 
-optimizerMLP = torch.optim.Adam(params = mlp.parameters(), lr=1e-1)
+optimizerMLP = torch.optim.Adam(params = mlp.parameters(), lr=parameters.lr_MLP)
 criterionMLP = nn.BCELoss()
 
-optimizerCNN = torch.optim.Adam(params = feature_extractor.parameters(), lr=1e-3) #, betas=(0.9, 0), weight_decay=5e-4)
+optimizerCNN = torch.optim.Adam(params = feature_extractor.parameters(), lr=parameters.lr_CNN)
 criterionCNN = nn.BCELoss()
 
+
 ## Training MLP ##
-n_epochs = 4_000
+n_epochs = parameters.epochs_MLP
 losses = []
 best_loss = np.inf
 for _ in tqdm.tqdm(range(n_epochs)):
@@ -105,18 +130,17 @@ for _ in tqdm.tqdm(range(n_epochs)):
             total_loss+=loss.item()
         total_loss /= i+1
     if total_loss < best_loss : 
-        torch.save(mlp.state_dict(), "checkpoints/MLP.pth")
+        torch.save(mlp.state_dict(), "checkpoints/MLP"+ str(parameters.lr_MLP) +"_" + str(parameters.epochs_MLP) +".pth")
         best_loss = total_loss
 
 mlp = MLP().to(device)
 mlp.load_state_dict(torch.load("checkpoints/MLP.pth"))
-dataloader_val = DataLoader(clinical_val, batch_size=64, shuffle=True)
 acc = 0
 balanced_acc = 0 
 predictions = []
 true_labels = []
 with torch.no_grad():
-    for i, (x, y) in tqdm.tqdm(enumerate(dataloader_val)) :
+    for i, (x, y) in tqdm.tqdm(enumerate(val_loader_MLP)) :
         y_pred = mlp(x.to(device))
         predictions += list((y_pred>0.5).detach().cpu().numpy().astype(float))
         true_labels += list(y.numpy())
@@ -127,28 +151,29 @@ print("Balanced accuracy score : {:.2f}".format(balanced_accuracy_score(true_lab
 
 ## Training CNN ##
 
-n_epochs = 500
+n_epochs = parameters.epochs_CNN
 losses = []
 best_loss = np.inf
 best_accuracy = 0
-batch_size = 10
-count = 0
 loss = 0
-batch_size = 7
-count = 0
-loss = 0
+#batch_size = 2
+#count = 0
+#Loss = 0
 for k in tqdm.tqdm(range(n_epochs)):
     feature_extractor.train()
     total_loss = 0
     print("Start Epoch "+str(k))
     for i, (x, y) in tqdm.tqdm(enumerate(train_loader_CNN)) :
+        #count+=1
         x = x.squeeze(0)
         y = y.squeeze(0)
         optimizerCNN.zero_grad()
         y_pred = feature_extractor(x.to(device))
         loss = criterionCNN(y_pred, y.to(device))
+        #Loss+=loss
         losses.append(loss.item())
         total_loss+=losses[-1]
+        #if count==batch_size:        
         loss.backward()
         optimizerCNN.step()
         
@@ -158,6 +183,8 @@ for k in tqdm.tqdm(range(n_epochs)):
     print("Validation")
     total_loss = 0
     feature_extractor.eval()
+    predictions = []
+    true_labels = []
     with torch.no_grad():
         for i, (x, y) in tqdm.tqdm(enumerate(val_loader_CNN)) :
             x = x.squeeze(0)
@@ -165,28 +192,20 @@ for k in tqdm.tqdm(range(n_epochs)):
             y_pred = feature_extractor(x.to(device))
             loss = criterionCNN(y_pred, y.to(device))
             total_loss+=loss.item()
+            predictions += list((y_pred>0.5).detach().cpu().numpy().astype(float))
+            true_labels += list(y.cpu().numpy())
+
     total_loss /= i+1 
     print("Loss on Validation set : {:.3f}".format(total_loss))
     if total_loss < best_loss :
         print("Loss decreased")
-        torch.save(feature_extractor.state_dict(), "checkpoints/CNN_best_model.pth")
+        torch.save(feature_extractor.state_dict(), "checkpoints/CNN" str(parameters.lr_CNN) +"_" + str(parameters.epochs_CNN) ".pth")
         best_loss = total_loss
-    balanced_acc = 0
-    predictions = []
-    true_labels = []
-    with torch.no_grad():
-        for i, (x, y) in tqdm.tqdm(enumerate(train_loader_CNN)) :
-            x = x.squeeze(0)
-            y = y.squeeze(0)
-            y_pred = feature_extractor(x.to(device))
-            #print(y_pred[0], y[0])
-            predictions += list((y_pred>0.5).detach().cpu().numpy().astype(float))
-            true_labels += list(y.cpu().numpy())
 
     balanced_acc = balanced_accuracy_score(true_labels, predictions)      
-    print("CNN Validation")
-    print("Accuracy score on training set : {:.2f}".format(accuracy_score(true_labels, predictions)))
-    print("Balanced accuracy score on training test: {:.2f}".format(balanced_acc))
+    #print("CNN Validation")
+    print("Accuracy score on validation set : {:.2f}".format(accuracy_score(true_labels, predictions)))
+    print("Balanced accuracy score on validation set: {:.2f}".format(balanced_acc))
     # with torch.no_grad():
     #     for i, (x, y) in tqdm.tqdm(enumerate(val_loader_CNN)) :
     #         x = x.squeeze(0)
