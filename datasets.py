@@ -52,3 +52,29 @@ class ImageDataset(Dataset):
         Id = sp[1] 
         image, y = plt.imread(file_name), self.id_label[Id]
         return torch.Tensor(image.transpose(-1, 0, 1)), torch.Tensor([y])
+
+class PatientDataset(Dataset):
+    def __init__(self, data, root_dir):
+        if not isinstance(data, pd.DataFrame):
+            raise Exception("data shoud be a pandas.DataFrame")
+        if not isinstance(root_dir, str):
+            raise Exception("root_dir shoud be a string")
+            
+        self.id = data["ID"].values        
+        self.label = data["LABEL"].values 
+        self.dir = root_dir
+
+    def __len__(self):
+        return len(self.id)
+    
+    def __getitem__(self, idx):
+        ID, y = self.id[idx], self.label[idx]
+
+        files = glob.glob(self.dir + "/" + ID + "/*")
+        b = len(files)
+        X = torch.zeros((b, 3, 224, 224))
+        for i in range(b):
+            image = plt.imread(files[i])
+            X[i,:,:,:] = torch.Tensor(image.transpose(-1, 0, 1))
+
+        return X, torch.Tensor([y])
