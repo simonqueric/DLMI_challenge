@@ -31,8 +31,9 @@ class ResidualBlock(nn.Module):
         return out
 
 class ConvolutionalFeatureExtractor(nn.Module):
-    def __init__(self, in_channels, num_classes, K):
+    def __init__(self, in_channels, num_classes, K, pooling="mean"):
         super(ConvolutionalFeatureExtractor, self).__init__()
+        self.pooling = pooling
         self.conv1 = nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3)
         self.bn = nn.BatchNorm2d(64)
         self.conv2 = self._make_layer(64, K, 2)
@@ -59,5 +60,7 @@ class ConvolutionalFeatureExtractor(nn.Module):
         x = self.conv5(x)
         x = self.flatten(x)
         x = self.fc(x)
+        if self.pooling=="mean":
+            x = x.mean(axis=0)
         x = self.sigmoid(x)
         return x
