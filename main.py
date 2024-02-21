@@ -15,7 +15,7 @@ import time
 from models import *
 from datasets import *
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
 print("device :", device)
 
@@ -42,7 +42,7 @@ for ID in negative_label :
 print("negative samples :", nb_negative)
 print("positive samples :", nb_positive)
 
-data_train, data_val = train_test_split(data_train_val, test_size=0.33)
+data_train, data_val = train_test_split(data_train_val, test_size=0.3)
 print("Size training set :", len(data_train))
 print("Size validation set :", len(data_val))
 print("Size test set :", len(data_test))
@@ -57,8 +57,8 @@ clinical_val = ClinicalData(data_val)
 image_train = PatientDataset(data_train, images_dir)
 image_val = PatientDataset(data_val, images_dir)
 
-print("Number of training images :", len(image_train))
-print("Number of validation images :", len(image_val))
+# print("Number of training images :", len(image_train))
+# print("Number of validation images :", len(image_val))
 
 train_loader_MLP = DataLoader(clinical_train, batch_size=512, shuffle=True)
 val_loader_MLP = DataLoader(clinical_val, batch_size=512, shuffle=True)
@@ -69,7 +69,10 @@ val_loader_CNN = DataLoader(image_val, batch_size=1, shuffle=True)
 ## add model.eval(), model.train()
 
 mlp = MLP().to(device)
-feature_extractor = ConvolutionalFeatureExtractor(in_channels=3, num_classes=1, K=8).to(device)
+K = 16 # 4 8 16 32 64
+#feature_extractor = ConvolutionalFeatureExtractor(in_channels=3, num_classes=1, K=8).to(device)
+
+feature_extractor = CNN(in_channels=3, num_classes=1, K=8).to(device)
 
 #feature_extractor.load_state_dict(torch.load("CNN49.pth"))
 
@@ -80,14 +83,14 @@ optimizerCNN = torch.optim.Adam(params = feature_extractor.parameters(), lr=1e-3
 criterionCNN = nn.BCELoss()
 
 ## Training MLP ##
-n_epochs = 1000
+n_epochs = 4_000
 losses = []
 best_loss = np.inf
 for _ in tqdm.tqdm(range(n_epochs)):
     mlp.train()
     for i, (x, y) in enumerate(train_loader_MLP) :
-        y_pred = mlp(x.to(device))
         optimizerMLP.zero_grad()
+        y_pred = mlp(x.to(device))
         loss = criterionMLP(y_pred, y.to(device))
         losses.append(loss.item())
         loss.backward()
@@ -124,10 +127,16 @@ print("Balanced accuracy score : {:.2f}".format(balanced_accuracy_score(true_lab
 
 ## Training CNN ##
 
-n_epochs = 50
+n_epochs = 500
 losses = []
 best_loss = np.inf
 best_accuracy = 0
+batch_size = 10
+count = 0
+loss = 0
+batch_size = 7
+count = 0
+loss = 0
 for k in tqdm.tqdm(range(n_epochs)):
     feature_extractor.train()
     total_loss = 0
@@ -135,8 +144,8 @@ for k in tqdm.tqdm(range(n_epochs)):
     for i, (x, y) in tqdm.tqdm(enumerate(train_loader_CNN)) :
         x = x.squeeze(0)
         y = y.squeeze(0)
-        y_pred = feature_extractor(x.to(device))
         optimizerCNN.zero_grad()
+        y_pred = feature_extractor(x.to(device))
         loss = criterionCNN(y_pred, y.to(device))
         losses.append(loss.item())
         total_loss+=losses[-1]
@@ -149,33 +158,49 @@ for k in tqdm.tqdm(range(n_epochs)):
     print("Validation")
     total_loss = 0
     feature_extractor.eval()
-    # with torch.no_grad():
-    #     for i, (x, y) in tqdm.tqdm(enumerate(val_loader_CNN)) :
-    #         y_pred = feature_extractor(x.to(device))
-    #         loss = criterionCNN(y_pred, y.to(device))
-    #         total_loss+=losses[-1]
-    # total_loss /= i+1 
-    # print("Loss on Validation set : {:.3f}".format(total_loss))
-    # if total_loss < best_loss :
-    #     torch.save(feature_extractor.state_dict(), "checkpoints/CNN_best_model.pth")
-    #     best_loss = total_loss
-    balanced_acc = 0
-    predictions = []
-    true_labels = []
     with torch.no_grad():
         for i, (x, y) in tqdm.tqdm(enumerate(val_loader_CNN)) :
             x = x.squeeze(0)
             y = y.squeeze(0)
             y_pred = feature_extractor(x.to(device))
+            loss = criterionCNN(y_pred, y.to(device))
+            total_loss+=loss.item()
+    total_loss /= i+1 
+    print("Loss on Validation set : {:.3f}".format(total_loss))
+    if total_loss < best_loss :
+        print("Loss decreased")
+        torch.save(feature_extractor.state_dict(), "checkpoints/CNN_best_model.pth")
+        best_loss = total_loss
+    balanced_acc = 0
+    predictions = []
+    true_labels = []
+    with torch.no_grad():
+        for i, (x, y) in tqdm.tqdm(enumerate(train_loader_CNN)) :
+            x = x.squeeze(0)
+            y = y.squeeze(0)
+            y_pred = feature_extractor(x.to(device))
+            #print(y_pred[0], y[0])
             predictions += list((y_pred>0.5).detach().cpu().numpy().astype(float))
             true_labels += list(y.cpu().numpy())
-    print(predictions, true_labels)
+
     balanced_acc = balanced_accuracy_score(true_labels, predictions)      
     print("CNN Validation")
-    print("Balanced accuracy score on validation test: {:.2f}".format(balanced_acc))
-    if balanced_acc > best_accuracy:
-        torch.save(feature_extractor.state_dict(), "checkpoints/CNN_best_model.pth")
-        best_accuracy = balanced_acc
+    print("Accuracy score on training set : {:.2f}".format(accuracy_score(true_labels, predictions)))
+    print("Balanced accuracy score on training test: {:.2f}".format(balanced_acc))
+    # with torch.no_grad():
+    #     for i, (x, y) in tqdm.tqdm(enumerate(val_loader_CNN)) :
+    #         x = x.squeeze(0)
+    #         y = y.squeeze(0)
+    #         y_pred = feature_extractor(x.to(device))
+    #         #print(y_pred[0], y[0])
+    #         predictions += list((y_pred>0.5).detach().cpu().numpy().astype(float))
+    #         true_labels += list(y.cpu().numpy())
+    # balanced_acc = balanced_accuracy_score(true_labels, predictions)      
+    # print("CNN Validation")
+    # print("Balanced accuracy score on validation test: {:.2f}".format(balanced_acc))
+    # if balanced_acc > best_accuracy:
+    #     torch.save(feature_extractor.state_dict(), "checkpoints/CNN_best_model.pth")
+    #     best_accuracy = balanced_acc
 
         
 np.save("training_loss", losses)
@@ -199,63 +224,63 @@ np.save("training_loss", losses)
         
 ## Softvoting : Validation ##
 
-feature_extractor = ConvolutionalFeatureExtractor(in_channels=3, num_classes=1, K=8).to(device)
-feature_extractor.load_state_dict(torch.load("checkpoints/CNN_best_model.pth"))
+# feature_extractor = ConvolutionalFeatureExtractor(in_channels=3, num_classes=1, K=8).to(device)
+# feature_extractor.load_state_dict(torch.load("checkpoints/CNN_best_model.pth"))
 
-patients = []
-predictions = []
-true_labels = []
-for patient in tqdm.tqdm(data_val["ID"].values) :
-    patients.append(patient)
-    label, dob, count = data_val[data_val["ID"]==patient]["LABEL"].values[0], data_val[data_val["ID"]==patient]["DOB"].values[0], data_val[data_val["ID"]==patient]["LYMPH_COUNT"].values[0]
-    true_labels.append(label)
+# patients = []
+# predictions = []
+# true_labels = []
+# for patient in tqdm.tqdm(data_val["ID"].values) :
+#     patients.append(patient)
+#     label, dob, count = data_val[data_val["ID"]==patient]["LABEL"].values[0], data_val[data_val["ID"]==patient]["DOB"].values[0], data_val[data_val["ID"]==patient]["LYMPH_COUNT"].values[0]
+#     true_labels.append(label)
     
-    age = 2024 - int(dob[-4:])
-    clinical_features = torch.Tensor([age, count]).to(device)
-    y_MLP = 1.*(mlp(clinical_features)>0.5)
-    y_CNN = 0
-    N = len(glob.glob(images_dir+"/"+patient+"/*"))
-    for file_image in glob.glob(images_dir+"/"+patient+"/*") :
-        image = plt.imread(file_image)
-        image = torch.Tensor(image.transpose(-1, 0, 1)).to(device)
-        y_pred = feature_extractor(image[None,:])
-        y_CNN+=y_pred
+#     age = 2024 - int(dob[-4:])
+#     clinical_features = torch.Tensor([age, count]).to(device)
+#     y_MLP = 1.*(mlp(clinical_features)>0.5)
+#     y_CNN = 0
+#     N = len(glob.glob(images_dir+"/"+patient+"/*"))
+#     for file_image in glob.glob(images_dir+"/"+patient+"/*") :
+#         image = plt.imread(file_image)
+#         image = torch.Tensor(image.transpose(-1, 0, 1)).to(device)
+#         y_pred = feature_extractor(image[None,:])
+#         y_CNN+=y_pred
         
-    y_CNN /= N
-    y_CNN = y_CNN[0, 0]
-    y_pred = 1.*((y_CNN + y_MLP)/2 > 0.5)
-    predictions.append(y_pred.cpu().numpy())
+#     y_CNN /= N
+#     y_CNN = y_CNN[0, 0]
+#     y_pred = 1.*((y_CNN + y_MLP)/2 > 0.5)
+#     predictions.append(y_pred.cpu().numpy())
 
-print("Soft Voting Validation")
-print("Accuracy score : ", accuracy_score(true_labels, predictions))
-print("Balanced accuracy score : ", balanced_accuracy_score(true_labels, predictions))
+# print("Soft Voting Validation")
+# print("Accuracy score : ", accuracy_score(true_labels, predictions))
+# print("Balanced accuracy score : ", balanced_accuracy_score(true_labels, predictions))
     
-## Softvoting : Prediction ##
-images_dir = "testset"
-patients = []
-predictions = []
-for patient in (data_test["ID"].values) :
-    patients.append(patient)
-    _, dob, count = data_test[data_test["ID"]==patient]["LABEL"].values[0], data_test[data_test["ID"]==patient]["DOB"].values[0], data_test[data_test["ID"]==patient]["LYMPH_COUNT"].values[0]
-    #true_labels.append(label)
+# ## Softvoting : Prediction ##
+# images_dir = "testset"
+# patients = []
+# predictions = []
+# for patient in (data_test["ID"].values) :
+#     patients.append(patient)
+#     _, dob, count = data_test[data_test["ID"]==patient]["LABEL"].values[0], data_test[data_test["ID"]==patient]["DOB"].values[0], data_test[data_test["ID"]==patient]["LYMPH_COUNT"].values[0]
+#     #true_labels.append(label)
     
-    age = 2024 - int(dob[-4:])
-    clinical_features = torch.Tensor([count, age]).to(device)
-    y_MLP = mlp(clinical_features)
-    y_CNN = 0
-    N = len(glob.glob(images_dir+"/"+patient+"/*"))
-    for file_image in glob.glob(images_dir+"/"+patient+"/*") :
-        image = plt.imread(file_image)
-        image = torch.Tensor(image.transpose(-1, 0, 1)).to(device)
-        y_pred = feature_extractor(image[None,:]).to(device)
-        y_CNN+=y_pred
+#     age = 2024 - int(dob[-4:])
+#     clinical_features = torch.Tensor([count, age]).to(device)
+#     y_MLP = mlp(clinical_features)
+#     y_CNN = 0
+#     N = len(glob.glob(images_dir+"/"+patient+"/*"))
+#     for file_image in glob.glob(images_dir+"/"+patient+"/*") :
+#         image = plt.imread(file_image)
+#         image = torch.Tensor(image.transpose(-1, 0, 1)).to(device)
+#         y_pred = feature_extractor(image[None,:]).to(device)
+#         y_CNN+=y_pred
     
-    y_CNN /= N
-    y_CNN = y_CNN[0, 0]
-    y_pred = 1.*((y_CNN + y_MLP)/2>0.5)
-    predictions.append(y_pred.cpu().numpy()[0])
+#     y_CNN /= N
+#     y_CNN = y_CNN[0, 0]
+#     y_pred = 1.*((y_CNN + y_MLP)/2>0.5)
+#     predictions.append(y_pred.cpu().numpy()[0])
 
-submission = pd.DataFrame()
-submission["Id"] = patients
-submission["Predicted"] = predictions
-submission.to_csv("submission.csv", sep=",", index=False)
+# submission = pd.DataFrame()
+# submission["Id"] = patients
+# submission["Predicted"] = predictions
+# submission.to_csv("submission.csv", sep=",", index=False)
