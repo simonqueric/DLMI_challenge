@@ -17,6 +17,7 @@ import time
 from models import *
 from datasets import *
 from resnet import *
+from efficientnet import *
 import argparse
 
 def train(epoch, print_every, name, model, optimizer, criterion, trainloader, valloader, scheduler=None, save=True) :
@@ -29,6 +30,7 @@ def train(epoch, print_every, name, model, optimizer, criterion, trainloader, va
     global best_acc
     global loss_train # list storing the loss evolution
     global loss_val
+    global accuracies
     model.train()
     total_loss = 0
     for i, (x, y) in enumerate(trainloader) :
@@ -91,18 +93,18 @@ def train(epoch, print_every, name, model, optimizer, criterion, trainloader, va
         print('\nEpoch: %d' % epoch, 'finished')
         print("Loss on validation set : {:.3f}".format(total_loss))
         print("balanced accuracy : {:.2f}".format(balanced_acc))
-
-    if balanced_acc >= min(best_acc, 0.85) : 
+        
+    accuracies.append(balanced_acc)
+    if save :
+        torch.save(model.state_dict(), "checkpoints/" + name  + "_" + str(balanced_acc)[:4]  +  "_" + str(epoch) + ".pth")
+    if balanced_acc > best_acc :
         print("Accuracy improved")
-        if save :
-            torch.save(model.state_dict(), "checkpoints/" + name  + "_" + str(balanced_acc)[:4]  +  "_" + str(epoch) + ".pth")
-        if balanced_acc > best_acc :
-            best_acc = balanced_acc
+        best_acc = balanced_acc
 
 ## DEFAULT PARAMETERS ##
 
 lr_CNN = 1e-4 #5e-4 # 1e-4, 5e-4, 1e-3
-epochs_CNN = 30
+epochs_CNN = 20
 device = "cuda:2"
 
 ## Config ##
@@ -143,17 +145,17 @@ def statistics(data):
     print("Proportion of positive samples : {:.2f}".format(n))
 
 
-print("Size training set :", len(data_train))
-print("Size validation set :", len(data_val))
-print("Size test set :", len(data_test))
-print("Size test set :", len(glob.glob("testset/*")) - 1)
+# print("Size training set :", len(data_train))
+# print("Size validation set :", len(data_val))
+# print("Size test set :", len(data_test))
+# print("Size test set :", len(glob.glob("testset/*")) - 1)
 
 
-image_train = PatientDataset(data_train.values, images_dir)
-image_val = PatientDataset(data_val.values, images_dir)
+# image_train = PatientDataset(data_train.values, images_dir)
+# image_val = PatientDataset(data_val.values, images_dir)
 
-train_loader_CNN = DataLoader(image_train, batch_size=1, shuffle=True)
-val_loader_CNN = DataLoader(image_val, batch_size=1, shuffle=True)
+# train_loader_CNN = DataLoader(image_train, batch_size=1, shuffle=True)
+# val_loader_CNN = DataLoader(image_val, batch_size=1, shuffle=True)
 
 
 resnet = models.resnet18(pretrained=False)
@@ -194,6 +196,7 @@ for i, (train_index, val_index) in enumerate(k_fold.split(data_train_val.values)
     best_accuracy = 0
     loss_train = []
     loss_val = []
+    accuracies = []
     name = "resnet18_fold" + str(i)
     print(name)
     for epoch in tqdm.tqdm(range(n_epochs)):
@@ -201,3 +204,4 @@ for i, (train_index, val_index) in enumerate(k_fold.split(data_train_val.values)
 
     np.save("fold" + str(i) + "_loss_train.npy", loss_train)
     np.save("fold" + str(i) + "_loss_val.npy", loss_val)
+    np.save("fold" + str(i) + "_accuracies.npy", accuracies)
