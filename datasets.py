@@ -13,7 +13,6 @@ class PatientDataset(Dataset):
         self.id = data[:,1]        
         self.label = data[:,2] 
         self.dir = root_dir
-        self.transform = transform
         self.counts = data[:,-1]
         self.ages = []
         for bod in data[:,-2]:
