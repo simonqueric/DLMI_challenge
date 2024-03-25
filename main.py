@@ -171,7 +171,7 @@ scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizerCNN, gamma=0.95)
 n_epochs = parameters.epochs_CNN
 losses = []
 best_loss = np.inf
-best_accuracy = 0
+best_acc = 0
 print_every = 1
 
 ## K fold cross validation ##
@@ -193,7 +193,7 @@ for i, (train_index, val_index) in enumerate(k_fold.split(data_train_val.values)
 
     # lmbda = lambda epoch: 0.99
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizerCNN, gamma=0.95)
-    best_accuracy = 0
+    best_acc = 0
     loss_train = []
     loss_val = []
     accuracies = []
