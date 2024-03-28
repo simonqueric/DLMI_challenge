@@ -14,7 +14,6 @@ from torchvision import models
 import tqdm 
 import glob
 import time
-from models import *
 from datasets import *
 from resnet import *
 from efficientnet import *
@@ -191,7 +190,6 @@ for i, (train_index, val_index) in enumerate(k_fold.split(data_train_val.values)
     optimizerCNN = torch.optim.SGD(params = cnn.parameters(), lr=1e-4, momentum=0.9)
     criterionCNN = nn.BCELoss()
 
-    # lmbda = lambda epoch: 0.99
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizerCNN, gamma=0.95)
     best_acc = 0
     loss_train = []
