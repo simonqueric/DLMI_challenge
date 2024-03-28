@@ -54,7 +54,7 @@ resnet = models.resnet18(pretrained=False) #.to(device)
 
 #resnet = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
 cnn = ModifiedResNet(resnet).to(device)
-cnn.load_state_dict(torch.load("checkpoints/resnet18_fold0_0.88_29.pth"))
+cnn.load_state_dict(torch.load("checkpoints/resnet18_fold0_0.88_17.pth"))
 
 
 
