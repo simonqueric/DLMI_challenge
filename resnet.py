@@ -1,10 +1,8 @@
 from functools import partial
-from typing import Any, Callable, List, Optional, Type, Union
 import torch
 import torch.nn as nn
 from torch import Tensor
 from torchvision import models
-from models import MLP
 import torch
 import torch.nn as nn
 
@@ -32,8 +30,6 @@ class ModifiedResNet(nn.Module):
         x = self.fc(x)
         out = self.sigmoid(x)
         return out
-
-
 
 def test():
     BATCH_SIZE = 4    
