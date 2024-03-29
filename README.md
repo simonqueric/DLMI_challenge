@@ -2,8 +2,11 @@
 
 ## Lymphocytosis classification
 
+
 As part of the course Deep Learning for Medical Imaging, we work on lymphocitosis classification. 
 For each patients, we have digital images of blood smears as well as clinical data (age and lymphocyte count). The objective of the challenge is to design the best model to decide wheter a patient has cancer or not.
+
+### Team name : Badodoband
 
 ## Run the pipeline 
 
